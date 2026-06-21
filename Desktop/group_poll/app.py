@@ -334,7 +334,7 @@ def draw_heatmap(scores, top_label=None):
 
     # 綠色漸層：分數越高越深綠（= 越推薦）
     cmap = LinearSegmentedColormap.from_list(
-        "meet", ["#e8f6ef", "#9fdcc0", "#4cb18a", "#1f8f63", "#0c6b46"]
+        "meet", ["#eaf0f7", "#a9c0dd", "#5b85b8", "#2a4d7a", "#14253d"]
     )
     valid_vals = score.where(score > 0).values
     vmax = np.nanmax(valid_vals) if np.isfinite(np.nanmax(valid_vals)) else 1
@@ -353,7 +353,7 @@ def draw_heatmap(scores, top_label=None):
                 frac = (v - vmin) / (vmax - vmin) if vmax > vmin else 1.0
                 face, edge = cmap(0.15 + 0.85 * frac), "white"
                 txt, fsize = f"{int(v)}", 20
-                tcolor = "white" if frac > 0.45 else "#0c6b46"
+                tcolor = "white" if frac > 0.45 else "#14253d"
             ax.add_patch(FancyBboxPatch(
                 (j - 0.5 + pad, i - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
                 boxstyle="round,pad=0,rounding_size=0.12",
@@ -387,7 +387,7 @@ def draw_heatmap(scores, top_label=None):
         spine.set_visible(False)
     ax.tick_params(length=0)
     ax.set_title("Group Meeting 時段投票熱力圖", fontsize=16,
-                 color="#1f8f63", pad=26, fontproperties=_FONT_PROP)
+                 color="#1e3a5f", pad=26, fontproperties=_FONT_PROP)
     fig.text(0.5, 0.015,
              "顏色越深 = 加權分數越高（金框 ★ 為目前最佳）　｜　灰底 = 田老師無法出席",
              ha="center", fontsize=9.5, color="#78909c", fontproperties=_FONT_PROP)
@@ -458,9 +458,9 @@ html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microso
 
 /* ---- Hero 標題 ---- */
 .hero {
-  background: linear-gradient(135deg, #1f8f63 0%, #0c6b46 100%);
+  background: linear-gradient(135deg, #2a4d7a 0%, #14253d 100%);
   border-radius: 22px; padding: 30px 34px; color: #fff;
-  box-shadow: 0 12px 30px rgba(12,107,70,.28); margin-bottom: 26px;
+  box-shadow: 0 12px 30px rgba(20,37,61,.28); margin-bottom: 26px;
 }
 .hero h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: .5px; }
 .hero p { margin: 10px 0 0; font-size: 15px; opacity: .92; }
@@ -474,9 +474,9 @@ html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microso
 .section-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
 .section-num {
   width: 34px; height: 34px; border-radius: 11px; flex: none;
-  background: linear-gradient(135deg, #1f8f63, #0c6b46); color: #fff;
+  background: linear-gradient(135deg, #1e3a5f, #14253d); color: #fff;
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;
-  box-shadow: 0 4px 10px rgba(12,107,70,.25);
+  box-shadow: 0 4px 10px rgba(20,37,61,.25);
 }
 .section-title { font-size: 21px; font-weight: 800; color: #1f2933; }
 
@@ -496,7 +496,7 @@ html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microso
 .rank-medal { font-size: 22px; }
 .rank-tag { font-size: 12px; font-weight: 700; color: #90a4ae; letter-spacing: .5px; }
 .rank-slot { font-size: 17px; font-weight: 800; color: #1f2933; margin: 2px 0 8px; }
-.rank-score { font-size: 34px; font-weight: 900; color: #1f8f63; line-height: 1; }
+.rank-score { font-size: 34px; font-weight: 900; color: #1e3a5f; line-height: 1; }
 .rank-score span { font-size: 15px; font-weight: 700; color: #78909c; margin-left: 3px; }
 .rank-sub { margin-top: 9px; font-size: 12.5px; color: #90a4ae; }
 
@@ -511,13 +511,13 @@ html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microso
 .slot-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
 .slot-name { font-size: 15.5px; font-weight: 800; color: #1f2933; }
 .badge { font-size: 12px; font-weight: 800; padding: 4px 11px; border-radius: 999px; white-space: nowrap; }
-.badge-ok { background: #e3f5ec; color: #0c6b46; }
+.badge-ok { background: #e7eef7; color: #14253d; }
 .badge-no { background: #eceff1; color: #90a4ae; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 8px; }
 .chip-teacher { background: #fff5d6; color: #a87900; border: 1px solid #ffe7a3; }
-.chip-grad { background: #e3f5ec; color: #0c6b46; border: 1px solid #bce6d2; }
-.chip-proj { background: #e6f0fb; color: #1c5fa8; border: 1px solid #c3ddf6; }
+.chip-grad { background: #e7eef7; color: #1e3a5f; border: 1px solid #c2d3e8; }
+.chip-proj { background: #e0f2f1; color: #00695c; border: 1px solid #b2dfdb; }
 .chip-empty { color: #b0bec5; font-size: 12.5px; }
 
 /* ---- 按鈕 ---- */
@@ -525,7 +525,7 @@ html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microso
   border-radius: 12px; font-weight: 700; border: none; padding: 10px 18px;
 }
 .stFormSubmitButton > button {
-  background: linear-gradient(135deg, #1f8f63, #0c6b46); color: #fff;
+  background: linear-gradient(135deg, #1e3a5f, #14253d); color: #fff;
 }
 .stFormSubmitButton > button:hover { filter: brightness(1.06); color: #fff; }
 
@@ -619,7 +619,7 @@ def main():
     st.markdown(
         '<div class="hero"><h1>🗳️ 實驗室 Group Meeting 時段調查</h1>'
         '<p>仿 Doodle 投票，依身份自動加權，田老師出席為必要條件，結果可一鍵推播 Slack。</p>'
-        '<div class="pills"><span class="pill">🟢 田老師必到</span>'
+        '<div class="pills"><span class="pill">🔵 田老師必到</span>'
         '<span class="pill">⚖️ 碩博 2 分 / 專題 1 分</span>'
         '<span class="pill">🔁 同名覆蓋不重複</span>'
         '<span class="pill">📊 即時熱力圖</span></div></div>',
