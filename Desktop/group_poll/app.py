@@ -24,6 +24,7 @@ from datetime import datetime
 import gspread
 import matplotlib
 import matplotlib.font_manager as fm
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -322,45 +323,61 @@ def draw_heatmap(scores, top_label=None):
             dates.append(s["date"])
     times = sorted({s["time"] for s in active})
 
-    # 建立 (時段) x (日期) 的分數矩陣
+    # 建立 (時段) x (日期) 的分數矩陣與票數矩陣
     score = pd.DataFrame(index=times, columns=dates, dtype=float)
+    nvotes = {}
     for s in active:
-        score.loc[s["time"], s["date"]] = scores.get(s["label"], {}).get("score", np.nan)
+        info = scores.get(s["label"], {})
+        score.loc[s["time"], s["date"]] = info.get("score", np.nan)
+        nvotes[(s["time"], s["date"])] = len(info.get("voters", []))
 
     n_rows, n_cols = len(times), len(dates)
-    fig, ax = plt.subplots(figsize=(1.55 * n_cols + 1.2, 1.15 * n_rows + 1.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(1.7 * n_cols + 1.4, 1.28 * n_rows + 1.6), dpi=170)
     fig.patch.set_facecolor("#ffffff")
     ax.set_facecolor("#ffffff")
 
-    # 綠色漸層：分數越高越深綠（= 越推薦）
+    # 深海軍藍漸層：分數越高越深（= 越推薦）
     cmap = LinearSegmentedColormap.from_list(
-        "meet", ["#eaf0f7", "#a9c0dd", "#5b85b8", "#2a4d7a", "#14253d"]
+        "meet", ["#dbe6f3", "#a9c0dd", "#5b85b8", "#2a4d7a", "#14253d"]
     )
     valid_vals = score.where(score > 0).values
     vmax = np.nanmax(valid_vals) if np.isfinite(np.nanmax(valid_vals)) else 1
     vmin = 0
-    pad = 0.06
+    pad, r = 0.07, 0.16
+    soft_shadow = [path_effects.withSimplePatchShadow(offset=(1.4, -1.6),
+                                                      shadow_rgbFace="#0e2238", alpha=0.22)]
 
     for i, t in enumerate(times):
         for j, d in enumerate(dates):
             v = score.loc[t, d]
             if pd.isna(v):
                 continue  # 沒有此時段，留白
-            if v <= -1:  # 田老師不行
-                face, edge = "#eceff1", "#cfd8dc"
-                txt, tcolor, fsize = "老師不行", "#90a4ae", 12
+            if v <= -1:  # 田老師不行 —— 刻意低調，讓有效時段更突出
+                cell = FancyBboxPatch(
+                    (j - 0.5 + pad, i - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
+                    boxstyle=f"round,pad=0,rounding_size={r}",
+                    linewidth=0, facecolor="#f1f4f8",
+                )
+                ax.add_patch(cell)
+                ax.text(j, i, "老師不行", ha="center", va="center", color="#b6bfcc",
+                        fontsize=10.5, fontweight="bold", fontproperties=_FONT_PROP)
             else:
                 frac = (v - vmin) / (vmax - vmin) if vmax > vmin else 1.0
-                face, edge = cmap(0.15 + 0.85 * frac), "white"
-                txt, fsize = f"{int(v)}", 20
-                tcolor = "white" if frac > 0.45 else "#14253d"
-            ax.add_patch(FancyBboxPatch(
-                (j - 0.5 + pad, i - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
-                boxstyle="round,pad=0,rounding_size=0.12",
-                linewidth=2, edgecolor=edge, facecolor=face,
-            ))
-            ax.text(j, i, txt, ha="center", va="center", color=tcolor,
-                    fontsize=fsize, fontweight="bold", fontproperties=_FONT_PROP)
+                face = cmap(0.18 + 0.82 * frac)
+                cell = FancyBboxPatch(
+                    (j - 0.5 + pad, i - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
+                    boxstyle=f"round,pad=0,rounding_size={r}",
+                    linewidth=0, facecolor=face,
+                )
+                cell.set_path_effects(soft_shadow)
+                ax.add_patch(cell)
+                tcolor = "white" if frac > 0.4 else "#14253d"
+                subcolor = (1, 1, 1, 0.78) if frac > 0.4 else "#5b85b8"
+                ax.text(j, i - 0.07, f"{int(v)}", ha="center", va="center", color=tcolor,
+                        fontsize=25, fontweight="bold", fontproperties=_FONT_PROP)
+                n = nvotes.get((t, d), 0)
+                ax.text(j, i + 0.28, f"{n} 票", ha="center", va="center", color=subcolor,
+                        fontsize=9.5, fontproperties=_FONT_PROP)
 
     # 標出目前最佳時段（金框 + ★ 最佳）
     if top_label:
@@ -369,29 +386,32 @@ def draw_heatmap(scores, top_label=None):
             jx, iy = dates.index(td), times.index(tt)
             ax.add_patch(FancyBboxPatch(
                 (jx - 0.5 + pad, iy - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
-                boxstyle="round,pad=0,rounding_size=0.12",
-                linewidth=3.2, edgecolor="#f4b400", facecolor="none", zorder=5,
+                boxstyle=f"round,pad=0,rounding_size={r}",
+                linewidth=3.4, edgecolor="#e0a800", facecolor="none", zorder=5,
             ))
-            ax.text(jx, iy - 0.33, "★ 最佳", ha="center", va="center", fontsize=11,
-                    fontweight="bold", color="#f4b400", zorder=6, fontproperties=_FONT_PROP)
+            ax.text(jx, iy - 0.36, "★ 最佳", ha="center", va="center", fontsize=11,
+                    fontweight="bold", color="#e0a800", zorder=6, fontproperties=_FONT_PROP)
 
+    # 日期表頭（軍藍粗體）與時段標籤
     ax.set_xlim(-0.5, n_cols - 0.5)
-    ax.set_ylim(n_rows - 0.5, -0.5)
+    ax.set_ylim(n_rows - 0.4, -0.6)
     ax.set_xticks(range(n_cols))
-    ax.set_xticklabels(dates, fontsize=13, color="#37474f", fontproperties=_FONT_PROP)
+    ax.set_xticklabels(dates, fontsize=13.5, color="#1e3a5f",
+                       fontweight="bold", fontproperties=_FONT_PROP)
     ax.set_yticks(range(n_rows))
-    ax.set_yticklabels(times, fontsize=12, color="#37474f", fontproperties=_FONT_PROP)
+    ax.set_yticklabels(times, fontsize=11.5, color="#5b6b7f", fontproperties=_FONT_PROP)
     ax.xaxis.set_ticks_position("top")
     ax.xaxis.set_label_position("top")
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.tick_params(length=0)
-    ax.set_title("Group Meeting 時段投票熱力圖", fontsize=16,
-                 color="#1e3a5f", pad=26, fontproperties=_FONT_PROP)
-    fig.text(0.5, 0.015,
-             "顏色越深 = 加權分數越高（金框 ★ 為目前最佳）　｜　灰底 = 田老師無法出席",
-             ha="center", fontsize=9.5, color="#78909c", fontproperties=_FONT_PROP)
-    fig.tight_layout(rect=[0, 0.04, 1, 1])
+    ax.set_xlabel("")
+    ax.set_title("Group Meeting 時段投票熱力圖", fontsize=17,
+                 color="#1e3a5f", pad=30, fontweight="bold", fontproperties=_FONT_PROP)
+    fig.text(0.5, 0.012,
+             "顏色越深 = 加權分數越高（金框 ★ 為目前最佳）　｜　淺灰 = 田老師無法出席",
+             ha="center", fontsize=9.5, color="#9aa7b5", fontproperties=_FONT_PROP)
+    fig.tight_layout(rect=[0, 0.035, 1, 1])
     return fig
 
 
@@ -618,11 +638,7 @@ def main():
     # Hero 標題
     st.markdown(
         '<div class="hero"><h1>🗳️ 實驗室 Group Meeting 時段調查</h1>'
-        '<p>仿 Doodle 投票，依身份自動加權，田老師出席為必要條件，結果可一鍵推播 Slack。</p>'
-        '<div class="pills"><span class="pill">🔵 田老師必到</span>'
-        '<span class="pill">⚖️ 碩博 2 分 / 專題 1 分</span>'
-        '<span class="pill">🔁 同名覆蓋不重複</span>'
-        '<span class="pill">📊 即時熱力圖</span></div></div>',
+        '<p>仿 Doodle 投票，依身份自動加權，田老師出席為必要條件，結果可一鍵推播 Slack。</p></div>',
         unsafe_allow_html=True,
     )
 
