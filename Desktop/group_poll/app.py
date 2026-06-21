@@ -17,31 +17,74 @@
 """
 
 import json
+import os
 from datetime import datetime
 
 import gspread
 import matplotlib
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import requests
 import seaborn as sns
 import streamlit as st
 from google.oauth2.service_account import Credentials
+from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.patches import FancyBboxPatch
 
 # ------------------------------------------------------------------------------
-# matplotlib 後端與中文字型設定
-# Streamlit Cloud 預設沒有中文字型，若 X/Y 軸標籤含中文會變成方框（豆腐字）。
-# 這裡先嘗試常見中文字型；雲端可在 requirements 安裝字型或改用英文時段名稱。
+# 中文字型設定（解決熱力圖中文變成方框 / 豆腐字的問題）
+# 策略：1) 嘗試把系統內常見的中文字型檔註冊給 matplotlib
+#       2) 從已安裝字型中挑一個支援 CJK 的設為預設
+# 部署到 Streamlit Cloud 時，請搭配本專案的 packages.txt（內含 fonts-noto-cjk），
+# 雲端就會安裝 Noto Sans CJK，下方即可自動偵測到。
 # ------------------------------------------------------------------------------
-matplotlib.rcParams["font.sans-serif"] = [
-    "Microsoft JhengHei",  # Windows 微軟正黑體
-    "PingFang TC",          # macOS
-    "Noto Sans CJK TC",     # Linux（雲端建議安裝）
-    "Heiti TC",
-    "Arial Unicode MS",
-    "DejaVu Sans",
-]
-matplotlib.rcParams["axes.unicode_minus"] = False  # 修正負號顯示
+@st.cache_resource(show_spinner=False)
+def setup_chinese_font():
+    """註冊並選用一個支援中文的字型，回傳字型名稱（找不到回傳 None）。
+
+    偵測順序：
+      1. 本專案內 fonts/ 資料夾的字型檔（最可靠，跟著 repo 走，部署到哪都有中文）
+      2. 系統內常見的 CJK 字型（Linux / macOS / Windows）
+    """
+    # --- 1) 優先使用本專案 bundled 的字型（相對於 app.py 的 fonts/ 資料夾）---
+    here = os.path.dirname(os.path.abspath(__file__))
+    bundled_dir = os.path.join(here, "fonts")
+    if os.path.isdir(bundled_dir):
+        for fn in os.listdir(bundled_dir):
+            if fn.lower().endswith((".ttc", ".ttf", ".otf")):
+                try:
+                    fm.fontManager.addfont(os.path.join(bundled_dir, fn))
+                except Exception:
+                    pass
+
+    # --- 2) 系統字型 ---
+    candidate_files = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Linux / Streamlit Cloud
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/System/Library/Fonts/PingFang.ttc",                       # macOS
+        "C:/Windows/Fonts/msjh.ttc",                                # Windows 微軟正黑體
+    ]
+    for f in candidate_files:
+        if os.path.exists(f):
+            try:
+                fm.fontManager.addfont(f)
+            except Exception:
+                pass
+
+    wanted = ["Noto Sans CJK TC", "Noto Sans CJK JP", "Microsoft JhengHei",
+              "PingFang TC", "Heiti TC", "Noto Sans CJK SC", "Arial Unicode MS"]
+    available = {f.name for f in fm.fontManager.ttflist}
+    chosen = next((w for w in wanted if w in available), None)
+    if chosen:
+        matplotlib.rcParams["font.sans-serif"] = [chosen] + matplotlib.rcParams["font.sans-serif"]
+    matplotlib.rcParams["axes.unicode_minus"] = False  # 修正負號顯示
+    return chosen
+
+
+# 模組載入時即執行一次
+_ACTIVE_FONT = setup_chinese_font()
 
 # ==============================================================================
 # 【區塊 0】全域設定 — 你平常只需要改這一段
@@ -257,40 +300,96 @@ def get_top3(scores):
 # 【區塊 3】Seaborn 熱力圖
 # ==============================================================================
 
-def draw_heatmap(scores):
+def draw_heatmap(scores, top_label=None):
     """
-    以 Seaborn 繪製時段熱力圖：
-      X 軸 = 日期、Y 軸 = 時段、顏色深淺 = 加權分數。
+    繪製美化版時段熱力圖（圓角卡片風格）：
+      X 軸 = 日期、Y 軸 = 時段、顏色越深綠 = 加權分數越高（越推薦）。
+      - 田老師不行的時段：灰底 + 「老師不行」
+      - 目前最佳時段：金色外框 + 「★ 最佳」
+      - 沒有該時段組合：留白
+    top_label：(date, time) tuple，會標示為最佳。
     回傳 matplotlib figure。
     """
+    sns.set_style("white")
     active = get_active_slots()
-    dates = sorted({s["date"] for s in active}, key=lambda d: [t["date"] for t in ALL_SLOTS].index(d))
+
+    # 依 ALL_SLOTS 原始順序排列日期；時段由早到晚
+    dates = []
+    for s in ALL_SLOTS:
+        if s in active and s["date"] not in dates:
+            dates.append(s["date"])
     times = sorted({s["time"] for s in active})
 
-    # 建立 (時段 time) x (日期 date) 的分數矩陣
-    matrix = pd.DataFrame(index=times, columns=dates, dtype=float)
+    # 建立 (時段) x (日期) 的分數矩陣
+    score = pd.DataFrame(index=times, columns=dates, dtype=float)
     for s in active:
-        score = scores.get(s["label"], {}).get("score", 0)
-        matrix.loc[s["time"], s["date"]] = score
+        score.loc[s["time"], s["date"]] = scores.get(s["label"], {}).get("score", np.nan)
 
-    fig, ax = plt.subplots(figsize=(max(6, len(dates) * 1.4), max(3, len(times) * 0.9)))
-    sns.heatmap(
-        matrix,
-        annot=True,            # 顯示分數數字
-        fmt=".0f",
-        cmap="YlOrRd",         # 顏色越深 = 分數越高
-        linewidths=0.5,
-        linecolor="white",
-        cbar_kws={"label": "加權分數"},
-        mask=matrix.isnull(),  # 沒有該組合的格子留白
-        ax=ax,
+    n_rows, n_cols = len(times), len(dates)
+    fig, ax = plt.subplots(figsize=(1.55 * n_cols + 1.2, 1.15 * n_rows + 1.2), dpi=160)
+    fig.patch.set_facecolor("#ffffff")
+    ax.set_facecolor("#ffffff")
+
+    # 綠色漸層：分數越高越深綠（= 越推薦）
+    cmap = LinearSegmentedColormap.from_list(
+        "meet", ["#e8f6ef", "#9fdcc0", "#4cb18a", "#1f8f63", "#0c6b46"]
     )
-    ax.set_xlabel("日期")
-    ax.set_ylabel("時段")
-    ax.set_title("Group Meeting 時段加權熱力圖（-1 = 老師不行）")
-    plt.xticks(rotation=0)
-    plt.yticks(rotation=0)
-    fig.tight_layout()
+    valid_vals = score.where(score > 0).values
+    vmax = np.nanmax(valid_vals) if np.isfinite(np.nanmax(valid_vals)) else 1
+    vmin = 0
+    pad = 0.06
+
+    for i, t in enumerate(times):
+        for j, d in enumerate(dates):
+            v = score.loc[t, d]
+            if pd.isna(v):
+                continue  # 沒有此時段，留白
+            if v <= -1:  # 田老師不行
+                face, edge = "#eceff1", "#cfd8dc"
+                txt, tcolor, fsize = "老師不行", "#90a4ae", 12
+            else:
+                frac = (v - vmin) / (vmax - vmin) if vmax > vmin else 1.0
+                face, edge = cmap(0.15 + 0.85 * frac), "white"
+                txt, fsize = f"{int(v)}", 20
+                tcolor = "white" if frac > 0.45 else "#0c6b46"
+            ax.add_patch(FancyBboxPatch(
+                (j - 0.5 + pad, i - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
+                boxstyle="round,pad=0,rounding_size=0.12",
+                linewidth=2, edgecolor=edge, facecolor=face,
+            ))
+            ax.text(j, i, txt, ha="center", va="center",
+                    color=tcolor, fontsize=fsize, fontweight="bold")
+
+    # 標出目前最佳時段（金框 + ★ 最佳）
+    if top_label:
+        td, tt = top_label
+        if td in dates and tt in times:
+            jx, iy = dates.index(td), times.index(tt)
+            ax.add_patch(FancyBboxPatch(
+                (jx - 0.5 + pad, iy - 0.5 + pad), 1 - 2 * pad, 1 - 2 * pad,
+                boxstyle="round,pad=0,rounding_size=0.12",
+                linewidth=3.2, edgecolor="#f4b400", facecolor="none", zorder=5,
+            ))
+            ax.text(jx, iy - 0.33, "★ 最佳", ha="center", va="center",
+                    fontsize=11, fontweight="bold", color="#f4b400", zorder=6)
+
+    ax.set_xlim(-0.5, n_cols - 0.5)
+    ax.set_ylim(n_rows - 0.5, -0.5)
+    ax.set_xticks(range(n_cols))
+    ax.set_xticklabels(dates, fontsize=13, fontweight="bold", color="#37474f")
+    ax.set_yticks(range(n_rows))
+    ax.set_yticklabels(times, fontsize=12, color="#37474f")
+    ax.xaxis.set_ticks_position("top")
+    ax.xaxis.set_label_position("top")
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(length=0)
+    ax.set_title("Group Meeting 時段投票熱力圖", fontsize=16, fontweight="bold",
+                 color="#1f8f63", pad=26)
+    fig.text(0.5, 0.015,
+             "顏色越深 = 加權分數越高（金框 ★ 為目前最佳）　｜　灰底 = 田老師無法出席",
+             ha="center", fontsize=9.5, color="#78909c")
+    fig.tight_layout(rect=[0, 0.04, 1, 1])
     return fig
 
 
@@ -419,7 +518,13 @@ def main():
     if df.empty:
         st.info("目前還沒有任何投票紀錄。")
     else:
-        fig = draw_heatmap(scores)
+        # 把 Top1 的 label 轉成 (date, time) 以便在熱力圖標示「★ 最佳」
+        top_label = None
+        if top3:
+            best_slot = next((s for s in ALL_SLOTS if s["label"] == top3[0][0]), None)
+            if best_slot:
+                top_label = (best_slot["date"], best_slot["time"])
+        fig = draw_heatmap(scores, top_label=top_label)
         st.pyplot(fig)
 
     # 各時段投票名單
