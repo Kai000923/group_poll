@@ -1,5 +1,5 @@
-# 忽略 Streamlit 的機密設定檔
-.streamlit/
+# 只忽略 Streamlit 機密金鑰，保留主題設定 config.toml
+.streamlit/secrets.toml
 
 # 忽略 Google 下載的 JSON 金鑰檔
 *.json

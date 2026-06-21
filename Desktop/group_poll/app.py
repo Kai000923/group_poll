@@ -16,6 +16,7 @@
 ================================================================================
 """
 
+import html
 import json
 import os
 from datetime import datetime
@@ -439,13 +440,191 @@ def push_to_slack(best_label, best_score):
 
 
 # ==============================================================================
-# 【區塊 5】Streamlit 前台介面
+# 【區塊 5】UI 美化：CSS 樣式與 HTML 元件
+# ==============================================================================
+
+# 各身份對應的標籤顏色（chip）
+ROLE_CHIP_CLASS = {
+    ROLE_TEACHER: "chip-teacher",
+    ROLE_GRAD: "chip-grad",
+    ROLE_PROJECT: "chip-proj",
+}
+
+CUSTOM_CSS = """
+<style>
+/* ---- 全域 ---- */
+.block-container { max-width: 1080px; padding-top: 1.4rem; padding-bottom: 4rem; }
+html, body, [class*="css"] { font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+
+/* ---- Hero 標題 ---- */
+.hero {
+  background: linear-gradient(135deg, #1f8f63 0%, #0c6b46 100%);
+  border-radius: 22px; padding: 30px 34px; color: #fff;
+  box-shadow: 0 12px 30px rgba(12,107,70,.28); margin-bottom: 26px;
+}
+.hero h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+.hero p { margin: 10px 0 0; font-size: 15px; opacity: .92; }
+.hero .pills { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.hero .pill {
+  background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.28);
+  padding: 5px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+}
+
+/* ---- 區段標題 ---- */
+.section-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
+.section-num {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  background: linear-gradient(135deg, #1f8f63, #0c6b46); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;
+  box-shadow: 0 4px 10px rgba(12,107,70,.25);
+}
+.section-title { font-size: 21px; font-weight: 800; color: #1f2933; }
+
+/* ---- Top 3 排名卡 ---- */
+.top3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.rank-card {
+  border-radius: 18px; padding: 20px 22px; background: #fff;
+  border: 1px solid #eceff1; box-shadow: 0 6px 18px rgba(15,40,30,.06);
+  position: relative; overflow: hidden;
+}
+.rank-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:6px; }
+.rank-1::before { background: linear-gradient(#f6c945,#e0a800); }
+.rank-2::before { background: linear-gradient(#cfd8dc,#9aa7ad); }
+.rank-3::before { background: linear-gradient(#e7b58a,#cf915c); }
+.rank-1 { box-shadow: 0 10px 26px rgba(224,168,0,.18); }
+.rank-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.rank-medal { font-size: 22px; }
+.rank-tag { font-size: 12px; font-weight: 700; color: #90a4ae; letter-spacing: .5px; }
+.rank-slot { font-size: 17px; font-weight: 800; color: #1f2933; margin: 2px 0 8px; }
+.rank-score { font-size: 34px; font-weight: 900; color: #1f8f63; line-height: 1; }
+.rank-score span { font-size: 15px; font-weight: 700; color: #78909c; margin-left: 3px; }
+.rank-sub { margin-top: 9px; font-size: 12.5px; color: #90a4ae; }
+
+/* ---- 投票名單卡 ---- */
+.slot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.slot-card {
+  border: 1px solid #eceff1; border-radius: 16px; padding: 15px 17px; background: #fff;
+  box-shadow: 0 4px 14px rgba(15,40,30,.05);
+}
+.slot-card.is-best { border-color: #f4b400; box-shadow: 0 6px 18px rgba(244,180,0,.18); }
+.slot-card.is-no { background: #fafbfc; }
+.slot-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.slot-name { font-size: 15.5px; font-weight: 800; color: #1f2933; }
+.badge { font-size: 12px; font-weight: 800; padding: 4px 11px; border-radius: 999px; white-space: nowrap; }
+.badge-ok { background: #e3f5ec; color: #0c6b46; }
+.badge-no { background: #eceff1; color: #90a4ae; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 8px; }
+.chip-teacher { background: #fff5d6; color: #a87900; border: 1px solid #ffe7a3; }
+.chip-grad { background: #e3f5ec; color: #0c6b46; border: 1px solid #bce6d2; }
+.chip-proj { background: #e6f0fb; color: #1c5fa8; border: 1px solid #c3ddf6; }
+.chip-empty { color: #b0bec5; font-size: 12.5px; }
+
+/* ---- 按鈕 ---- */
+.stButton > button, .stFormSubmitButton > button {
+  border-radius: 12px; font-weight: 700; border: none; padding: 10px 18px;
+}
+.stFormSubmitButton > button {
+  background: linear-gradient(135deg, #1f8f63, #0c6b46); color: #fff;
+}
+.stFormSubmitButton > button:hover { filter: brightness(1.06); color: #fff; }
+
+/* ---- 表單容器 ---- */
+[data-testid="stForm"] {
+  border: 1px solid #eceff1; border-radius: 18px; padding: 22px 24px;
+  box-shadow: 0 6px 18px rgba(15,40,30,.05); background: #fff;
+}
+
+/* ---- 最佳結果橫幅 ---- */
+.best-banner {
+  background: linear-gradient(135deg, #fff8e6, #fff2cc); border: 1px solid #ffe39a;
+  border-radius: 16px; padding: 16px 20px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 14px;
+}
+.best-banner .bb-icon { font-size: 26px; }
+.best-banner .bb-text { font-size: 15px; color: #6b5200; }
+.best-banner .bb-text b { color: #1f2933; font-size: 16.5px; }
+</style>
+"""
+
+
+def section_header(num, title):
+    """輸出統一風格的區段標題。"""
+    st.markdown(
+        f'<div class="section-head"><div class="section-num">{num}</div>'
+        f'<div class="section-title">{html.escape(title)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_top3(top3):
+    """以排名卡呈現 Top 3。"""
+    medals = ["🥇", "🥈", "🥉"]
+    tags = ["第 1 推薦", "第 2 推薦", "第 3 推薦"]
+    cards = []
+    for i, (label, info) in enumerate(top3):
+        n_grad = sum(1 for _, r in info["voters"] if r == ROLE_GRAD)
+        n_proj = sum(1 for _, r in info["voters"] if r == ROLE_PROJECT)
+        cards.append(
+            f'<div class="rank-card rank-{i+1}">'
+            f'<div class="rank-top"><span class="rank-medal">{medals[i]}</span>'
+            f'<span class="rank-tag">{tags[i]}</span></div>'
+            f'<div class="rank-slot">{html.escape(label)}</div>'
+            f'<div class="rank-score">{info["score"]}<span>分</span></div>'
+            f'<div class="rank-sub">碩博 {n_grad} 票 · 專題 {n_proj} 票 · 田老師可出席 ✓</div>'
+            f'</div>'
+        )
+    st.markdown(f'<div class="top3-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_voter_list(active_slots, scores, best_label=None):
+    """以卡片呈現各時段投票名單。"""
+    cards = []
+    for slot in active_slots:
+        label = slot["label"]
+        info = scores.get(label, {"score": 0, "teacher_ok": False, "voters": []})
+        voters = info["voters"]
+        is_best = (label == best_label)
+        if info["teacher_ok"]:
+            badge = f'<span class="badge badge-ok">加權 {info["score"]} 分</span>'
+            card_cls = "slot-card is-best" if is_best else "slot-card"
+        else:
+            badge = '<span class="badge badge-no">老師不行</span>'
+            card_cls = "slot-card is-no"
+        if voters:
+            chips = "".join(
+                f'<span class="chip {ROLE_CHIP_CLASS.get(r, "chip-proj")}">{html.escape(n)}</span>'
+                for n, r in voters
+            )
+        else:
+            chips = '<span class="chip-empty">尚無人投票</span>'
+        star = "★ " if is_best else ""
+        cards.append(
+            f'<div class="{card_cls}"><div class="slot-head">'
+            f'<span class="slot-name">{star}{html.escape(label)}</span>{badge}</div>'
+            f'<div class="chips">{chips}</div></div>'
+        )
+    st.markdown(f'<div class="slot-list">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+# ==============================================================================
+# 【區塊 6】Streamlit 前台主介面
 # ==============================================================================
 
 def main():
     st.set_page_config(page_title="實驗室 Group Meeting 時段調查", page_icon="🗳️", layout="wide")
-    st.title("🗳️ 實驗室 Group Meeting 時段調查")
-    st.caption("仿 Doodle 投票 · 身份加權 · 田老師為必要條件 · 結果可一鍵推播 Slack")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    # Hero 標題
+    st.markdown(
+        '<div class="hero"><h1>🗳️ 實驗室 Group Meeting 時段調查</h1>'
+        '<p>仿 Doodle 投票，依身份自動加權，田老師出席為必要條件，結果可一鍵推播 Slack。</p>'
+        '<div class="pills"><span class="pill">🟢 田老師必到</span>'
+        '<span class="pill">⚖️ 碩博 2 分 / 專題 1 分</span>'
+        '<span class="pill">🔁 同名覆蓋不重複</span>'
+        '<span class="pill">📊 即時熱力圖</span></div></div>',
+        unsafe_allow_html=True,
+    )
 
     active_slots = get_active_slots()
     active_labels = [s["label"] for s in active_slots]
@@ -453,7 +632,7 @@ def main():
     # ----------------------------------------------------------------------
     # （一）投票區
     # ----------------------------------------------------------------------
-    st.header("① 填寫你的可出席時段")
+    section_header(1, "填寫你的可出席時段")
     with st.form("vote_form", clear_on_submit=False):
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -499,57 +678,51 @@ def main():
     # ----------------------------------------------------------------------
     # （二）系統推薦 Top 3
     # ----------------------------------------------------------------------
-    st.header("② 🏆 系統當前推薦最佳時段 Top 3")
+    section_header(2, "🏆 系統當前推薦最佳時段 Top 3")
     if not top3:
         st.info("目前還沒有「田老師有勾選且有加權分數」的時段，等大家投票後就會出現推薦。")
     else:
-        medals = ["🥇", "🥈", "🥉"]
-        cols = st.columns(len(top3))
-        for i, (label, info) in enumerate(top3):
-            with cols[i]:
-                st.metric(label=f"{medals[i]} {label}", value=f"{info['score']} 分",
-                          help=f"投票人數：{len(info['voters'])}")
+        render_top3(top3)
 
     st.divider()
 
     # ----------------------------------------------------------------------
     # （三）熱力圖看板
     # ----------------------------------------------------------------------
-    st.header("③ 📊 當前投票結果看板（熱力圖）")
+    section_header(3, "📊 當前投票結果看板（熱力圖）")
+    best_label = top3[0][0] if top3 else None
     if df.empty:
         st.info("目前還沒有任何投票紀錄。")
     else:
         # 把 Top1 的 label 轉成 (date, time) 以便在熱力圖標示「★ 最佳」
         top_label = None
-        if top3:
-            best_slot = next((s for s in ALL_SLOTS if s["label"] == top3[0][0]), None)
+        if best_label:
+            best_slot = next((s for s in ALL_SLOTS if s["label"] == best_label), None)
             if best_slot:
                 top_label = (best_slot["date"], best_slot["time"])
-        fig = draw_heatmap(scores, top_label=top_label)
-        st.pyplot(fig)
+        c1, c2, c3 = st.columns([1, 8, 1])
+        with c2:
+            fig = draw_heatmap(scores, top_label=top_label)
+            st.pyplot(fig)
 
-    # 各時段投票名單
-    st.subheader("各時段已投票名單")
-    for slot in active_slots:
-        label = slot["label"]
-        info = scores.get(label, {"score": 0, "teacher_ok": False, "voters": []})
-        voters = info["voters"]
-        if info["teacher_ok"]:
-            score_tag = f"加權 {info['score']} 分"
-        else:
-            score_tag = "❌ 老師不行（-1）"
-        names = "、".join([f"{n}（{r}）" for n, r in voters]) if voters else "（尚無人投票）"
-        st.markdown(f"**{label}** — {score_tag}　｜　{names}")
+    # 各時段投票名單（卡片化，身份以顏色標籤區分）
+    st.markdown("##### 各時段已投票名單")
+    render_voter_list(active_slots, scores, best_label=best_label)
 
     st.divider()
 
     # ----------------------------------------------------------------------
     # （四）Slack 推播
     # ----------------------------------------------------------------------
-    st.header("④ 📢 公布結果")
+    section_header(4, "📢 公布結果")
     if top3:
         best_label, best_info = top3[0]
-        st.write(f"目前最佳時段：**{best_label}**（加權 {best_info['score']} 分）")
+        st.markdown(
+            f'<div class="best-banner"><span class="bb-icon">🏆</span>'
+            f'<span class="bb-text">目前最佳時段：<b>{html.escape(best_label)}</b>'
+            f'（加權 {best_info["score"]} 分）</span></div>',
+            unsafe_allow_html=True,
+        )
         if st.button("📢 將目前最佳結果推播至 Slack", type="primary"):
             ok, msg = push_to_slack(best_label, best_info["score"])
             if ok:
