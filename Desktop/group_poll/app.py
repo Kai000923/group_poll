@@ -42,49 +42,50 @@ from matplotlib.patches import FancyBboxPatch
 # ------------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def setup_chinese_font():
-    """註冊並選用一個支援中文的字型，回傳字型名稱（找不到回傳 None）。
+    """回傳一個指向中文字型「檔案」的 FontProperties 物件（找不到回傳 None）。
+
+    為什麼用 FontProperties(fname=...) 而不是只設字型名稱？
+      因為雲端有時會有「同名但壞掉的字型快取」，只指定名稱仍可能畫成方框。
+      直接綁定字型檔路徑，並把它套用到每一個文字元素上，就能 100% 避免豆腐字。
 
     偵測順序：
       1. 本專案內 fonts/ 資料夾的字型檔（最可靠，跟著 repo 走，部署到哪都有中文）
       2. 系統內常見的 CJK 字型（Linux / macOS / Windows）
     """
-    # --- 1) 優先使用本專案 bundled 的字型（相對於 app.py 的 fonts/ 資料夾）---
     here = os.path.dirname(os.path.abspath(__file__))
-    bundled_dir = os.path.join(here, "fonts")
-    if os.path.isdir(bundled_dir):
-        for fn in os.listdir(bundled_dir):
-            if fn.lower().endswith((".ttc", ".ttf", ".otf")):
-                try:
-                    fm.fontManager.addfont(os.path.join(bundled_dir, fn))
-                except Exception:
-                    pass
-
-    # --- 2) 系統字型 ---
     candidate_files = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",  # Linux / Streamlit Cloud
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/System/Library/Fonts/PingFang.ttc",                       # macOS
         "C:/Windows/Fonts/msjh.ttc",                                # Windows 微軟正黑體
     ]
-    for f in candidate_files:
-        if os.path.exists(f):
+    # 把 bundled 字型放最前面（優先使用）
+    bundled_dir = os.path.join(here, "fonts")
+    if os.path.isdir(bundled_dir):
+        for fn in sorted(os.listdir(bundled_dir)):
+            if fn.lower().endswith((".ttc", ".ttf", ".otf")):
+                candidate_files.insert(0, os.path.join(bundled_dir, fn))
+
+    for path in candidate_files:
+        if os.path.exists(path):
             try:
-                fm.fontManager.addfont(f)
+                fm.fontManager.addfont(path)
+                fp = fm.FontProperties(fname=path)
+                # 同步設定 rcParams 當作備援
+                matplotlib.rcParams["font.sans-serif"] = (
+                    [fp.get_name()] + matplotlib.rcParams["font.sans-serif"]
+                )
+                matplotlib.rcParams["axes.unicode_minus"] = False
+                return fp
             except Exception:
-                pass
+                continue
 
-    wanted = ["Noto Sans CJK TC", "Noto Sans CJK JP", "Microsoft JhengHei",
-              "PingFang TC", "Heiti TC", "Noto Sans CJK SC", "Arial Unicode MS"]
-    available = {f.name for f in fm.fontManager.ttflist}
-    chosen = next((w for w in wanted if w in available), None)
-    if chosen:
-        matplotlib.rcParams["font.sans-serif"] = [chosen] + matplotlib.rcParams["font.sans-serif"]
-    matplotlib.rcParams["axes.unicode_minus"] = False  # 修正負號顯示
-    return chosen
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    return None
 
 
-# 模組載入時即執行一次
-_ACTIVE_FONT = setup_chinese_font()
+# 模組載入時即執行一次，之後畫圖都用這個字型物件
+_FONT_PROP = setup_chinese_font()
 
 # ==============================================================================
 # 【區塊 0】全域設定 — 你平常只需要改這一段
@@ -357,8 +358,8 @@ def draw_heatmap(scores, top_label=None):
                 boxstyle="round,pad=0,rounding_size=0.12",
                 linewidth=2, edgecolor=edge, facecolor=face,
             ))
-            ax.text(j, i, txt, ha="center", va="center",
-                    color=tcolor, fontsize=fsize, fontweight="bold")
+            ax.text(j, i, txt, ha="center", va="center", color=tcolor,
+                    fontsize=fsize, fontweight="bold", fontproperties=_FONT_PROP)
 
     # 標出目前最佳時段（金框 + ★ 最佳）
     if top_label:
@@ -370,25 +371,25 @@ def draw_heatmap(scores, top_label=None):
                 boxstyle="round,pad=0,rounding_size=0.12",
                 linewidth=3.2, edgecolor="#f4b400", facecolor="none", zorder=5,
             ))
-            ax.text(jx, iy - 0.33, "★ 最佳", ha="center", va="center",
-                    fontsize=11, fontweight="bold", color="#f4b400", zorder=6)
+            ax.text(jx, iy - 0.33, "★ 最佳", ha="center", va="center", fontsize=11,
+                    fontweight="bold", color="#f4b400", zorder=6, fontproperties=_FONT_PROP)
 
     ax.set_xlim(-0.5, n_cols - 0.5)
     ax.set_ylim(n_rows - 0.5, -0.5)
     ax.set_xticks(range(n_cols))
-    ax.set_xticklabels(dates, fontsize=13, fontweight="bold", color="#37474f")
+    ax.set_xticklabels(dates, fontsize=13, color="#37474f", fontproperties=_FONT_PROP)
     ax.set_yticks(range(n_rows))
-    ax.set_yticklabels(times, fontsize=12, color="#37474f")
+    ax.set_yticklabels(times, fontsize=12, color="#37474f", fontproperties=_FONT_PROP)
     ax.xaxis.set_ticks_position("top")
     ax.xaxis.set_label_position("top")
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.tick_params(length=0)
-    ax.set_title("Group Meeting 時段投票熱力圖", fontsize=16, fontweight="bold",
-                 color="#1f8f63", pad=26)
+    ax.set_title("Group Meeting 時段投票熱力圖", fontsize=16,
+                 color="#1f8f63", pad=26, fontproperties=_FONT_PROP)
     fig.text(0.5, 0.015,
              "顏色越深 = 加權分數越高（金框 ★ 為目前最佳）　｜　灰底 = 田老師無法出席",
-             ha="center", fontsize=9.5, color="#78909c")
+             ha="center", fontsize=9.5, color="#78909c", fontproperties=_FONT_PROP)
     fig.tight_layout(rect=[0, 0.04, 1, 1])
     return fig
 
