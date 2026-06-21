@@ -1,0 +1,7 @@
+streamlit>=1.33
+gspread>=6.0
+google-auth>=2.29
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.13
+requests>=2.31

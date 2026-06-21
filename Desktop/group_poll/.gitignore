@@ -1,0 +1,9 @@
+# 忽略 Streamlit 的機密設定檔
+.streamlit/
+
+# 忽略 Google 下載的 JSON 金鑰檔
+*.json
+
+# 忽略 Python 產生的暫存檔
+__pycache__/
+.DS_Store
